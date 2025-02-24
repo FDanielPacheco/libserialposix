@@ -1,0 +1,86 @@
+# Pipeline Name
+name: Build & Documentation
+
+# This pipeline will run all the time a commit is done to main branch
+on:
+  push:
+    branches: ["main"]
+
+  # Allows to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false  
+        
+jobs:
+  build:
+    # It will run the tasks on a fresh image on ubuntu
+    runs-on: ubuntu-latest
+
+    # Sequence of tasks
+    steps:
+      # Download the repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Install the necessary dependicies for the compilation and generation of documentation
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential doxygen graphviz check
+
+      # Build the C library 
+      - name: Build the library
+        run: make build/c
+
+      # Build the C Examples
+      - name: Build the example
+        run: make build/c/example
+
+      # Genearate the documentation with doxygen inside the /docs folder
+      - name: Generate documentation
+        run: make documentation
+
+      # Upload the documentation as an artifact
+      - name: Upload documentation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: doxygen-docs
+          path: docs/html
+
+  deploy:
+    # Ensures `deploy` runs only if `build` succeeds    
+    needs: build
+    
+    # It will run the tasks on a fresh image on ubuntu
+    runs-on: ubuntu-latest
+    
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Download documentation artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: doxygen-docs
+          path: docs/html
+
+      - name: Setup GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload to GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/html
+          
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
