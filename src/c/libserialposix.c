@@ -49,7 +49,7 @@ serial_t *
 serial_open( const char * pathname, uint8_t readonly, const serial_config_t * config ){
   if( !pathname ){
     errno = EINVAL;
-    fprintf(stderr, "ERROR:  pathname and/or config are 'NULL' at line %d in file %s\n", __LINE__, __FILE__);
+    fprintf(stderr, "ERROR:  pathname is 'NULL' at line %d in file %s\n", __LINE__, __FILE__);
     return NULL;
   }
 
@@ -146,6 +146,7 @@ serial_close( serial_t * serial ){
   return 0;
 }
 
+/**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 int8_t 
 serial_default_config( serial_config_t * config ){
   if( !config ){
@@ -189,19 +190,19 @@ serial_set_baudrate( const baudRate_t baudrate, const serial_t * serial ){
 
   result = cfsetispeed( &tty, baudrate );
   if( 0 != result ){
-    fprintf(stderr, "ERROR: tcgetatrr (%d)(%s) at line %d in file %s\n", result, strerror(errno), __LINE__, __FILE__);
+    fprintf(stderr, "ERROR: cfsetispeed (%d)(%s) at line %d in file %s\n", result, strerror(errno), __LINE__, __FILE__);
     return -1;
   }
 
   result = cfsetospeed( &tty, baudrate );
   if( 0 != result ){
-    fprintf(stderr, "ERROR: tcgetatrr (%d)(%s) at line %d in file %s\n", result, strerror(errno), __LINE__, __FILE__);
+    fprintf(stderr, "ERROR: cfsetospeed (%d)(%s) at line %d in file %s\n", result, strerror(errno), __LINE__, __FILE__);
     return -1;
   }
   
   result = tcsetattr( serial->fd, TCSANOW, &tty );
   if( 0 != result ){
-    fprintf(stderr, "ERROR: %s at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
+    fprintf(stderr, "ERROR: tcsetattr (%d)(%s) at line %d in file %s\n", result, strerror(errno), __LINE__, __FILE__);
     return -1;
   }
   
@@ -255,7 +256,7 @@ serial_set_parity( const parity_t parity, const serial_t * serial ){
 
   result = tcsetattr( serial->fd, TCSANOW, &tty );
   if( 0 != result ){
-    fprintf(stderr, "ERROR: %s at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
+    fprintf(stderr, "ERROR: tcsetattr (%d)(%s) at line %d in file %s\n", result, strerror(errno), __LINE__, __FILE__);
     return -1;
   }
   return 0;
@@ -338,7 +339,7 @@ serial_set_databits( const dataBits_t dataBits, const serial_t * serial ){
     case DATA_BITS_6:
     case DATA_BITS_7:
     case DATA_BITS_8:
-      tty.c_cflag |= (tcflag_t) dataBits;                                   // Bits per byte
+      tty.c_cflag |= (tcflag_t) dataBits;                                   // Bits per word
       break;
   }
 
@@ -483,29 +484,35 @@ serial_config_update( const serial_config_t * config, serial_t * serial ){
   }
   
   if( -1 == serial_set_parity( config->parity, serial ) ){
-    fprintf(stderr, "ERROR: tcgetatrr (%d)(%s) at line %d in file %s\n", errno, strerror(errno), __LINE__, __FILE__);
+    fprintf(stderr, "ERROR: set configuration (%d)(%s) at line %d in file %s\n", errno, strerror(errno), __LINE__, __FILE__);
     return -1;
   }
 
   if( -1 == serial_set_stopbits( config->stopBits, serial ) ){
-    fprintf(stderr, "ERROR: tcgetatrr (%d)(%s) at line %d in file %s\n", errno, strerror(errno), __LINE__, __FILE__);
+    fprintf(stderr, "ERROR: set configuration (%d)(%s) at line %d in file %s\n", errno, strerror(errno), __LINE__, __FILE__);
     return -1;
   }
 
   if( -1 == serial_set_databits( config->dataBits, serial ) ){
-    fprintf(stderr, "ERROR: tcgetatrr (%d)(%s) at line %d in file %s\n", errno, strerror(errno), __LINE__, __FILE__);
+    fprintf(stderr, "ERROR: set configuration (%d)(%s) at line %d in file %s\n", errno, strerror(errno), __LINE__, __FILE__);
     return -1;
   }
       
   if( -1 == serial_set_flowcontrol( config->flow, serial ) ){
-    fprintf(stderr, "ERROR: tcgetatrr (%d)(%s) at line %d in file %s\n", errno, strerror(errno), __LINE__, __FILE__);
+    fprintf(stderr, "ERROR: set configuration (%d)(%s) at line %d in file %s\n", errno, strerror(errno), __LINE__, __FILE__);
     return -1;
   }
   
   if( 0 != serial_set_rule( config->timeout, config->minBytes, serial ) ){
-    fprintf(stderr, "ERROR: tcgetatrr (%d)(%s) at line %d in file %s\n", errno, strerror(errno), __LINE__, __FILE__);
+    fprintf(stderr, "ERROR: set configuration (%d)(%s) at line %d in file %s\n", errno, strerror(errno), __LINE__, __FILE__);
     return -1;
   }
+
+  if( 0 != serial_set_baudrate( config->baudrate, serial ) ){
+    fprintf(stderr, "ERROR: set configuration (%d)(%s) at line %d in file %s\n", errno, strerror(errno), __LINE__, __FILE__);
+    return -1;
+  }
+
   serial->config = *config;  
   return 0;
 }
@@ -527,7 +534,7 @@ serial_readLine( char * buf, const size_t size, const size_t offset, const seria
 
   if( size <= offset ){
     errno = ENOMEM;
-    fprintf(stderr, "ERROR: serial_fgets, %s at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
+    fprintf(stderr, "ERROR: readLine, %s at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
     return 0;
   }
 
@@ -897,7 +904,7 @@ serial_get_baudrate( baudRate_t * baudrate, const serial_t * serial ){
 
   const baudRate_t br = cfgetospeed( &tty );
   switch( br ){
-    default:        snprintf( baudrate_string, BFS_GET, "unkown"); break;
+    default:        snprintf( baudrate_string, BFS_GET, "unknown"); break;
     case B0:        snprintf( baudrate_string, BFS_GET, "0"); break;  
     case B50:       snprintf( baudrate_string, BFS_GET, "50"); break;  
     case B75:       snprintf( baudrate_string, BFS_GET, "75"); break;  
@@ -1145,7 +1152,7 @@ serial_get_rule( uint8_t * timeout, uint8_t * min, const serial_t * serial ){
   if( NULL != timeout )
     *timeout = tty.c_cc[VTIME];
   if( NULL != min )
-    *min = tty.c_cc[VTIME];
+    *min = tty.c_cc[VMIN];
 
   snprintf( string, BFS_GET, "%hhd,%hhd", tty.c_cc[VTIME], tty.c_cc[VMIN] );
   return string;

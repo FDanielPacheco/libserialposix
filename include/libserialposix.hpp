@@ -33,15 +33,14 @@
  * Imported libraries
  **************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 
-#include <stdlib.h>    
 #include <stdarg.h>
 #include <termios.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <linux/limits.h>
-
-#include <string>
+#include <cstdlib>    
+#include <cstring>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdint>
@@ -49,21 +48,23 @@
 #include <memory>
 #include <vector>
 #include <stdexcept>
+#include <optional>
 
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
  * Objects
  **************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 
 namespace 
-serial_port {
+libposix{
   class
   SerialPort {
-    private:
+    public:
       enum class
       FlowControl : uint8_t {
         None,
         Hardware,
         Software,
+        Error,
       };
     
       enum class 
@@ -71,20 +72,23 @@ serial_port {
         None,
         Odd,
         Even,
+        Error,
       };
     
       enum class
       DataBits : uint8_t {
-        Five = 5,
-        Six = 6,
-        Seven = 7,
-        Eight = 8,
+        Five = CS5,
+        Six = CS6,
+        Seven = CS7,
+        Eight = CS8,
+        Error,
       };
     
       enum class
       StopBits : uint8_t {
         One = 1,
         Two = 2,
+        Error,
       };
     
       enum class
@@ -97,6 +101,25 @@ serial_port {
       };
       
       typedef speed_t BaudRate;
+      
+      enum class
+      StatusCode {
+        Error,
+        Success,
+        InvalidParameter,
+        DeviceNotFound,
+        NameToLong,
+        Timeout,
+        BufferOverflow,
+        IOError
+      };
+      
+      enum class
+      Buffer {
+        Input,
+        Output,
+        Both,
+      };
 
       struct 
       Configuration {
@@ -109,63 +132,58 @@ serial_port {
         uint8_t     timeout    = 1;                                            //!< The time any read function will wait in deciseconds for the information to arrive, example 200.
         uint8_t     minBytes   = 0;                                            //!< The minimum number of bytes to necessary receive before returning the read function.
       };
-      
-      enum class
-      StatusCode {
-        Success,
-        Error,
-      };
-      
-      StatusCode open( const std::string &pathname );
-      StatusCode close( void );
 
-      enum class
-      Buffer {
-        Input,
-        Output,
-      };
-
-    protected:
-      Configuration                                config;                     //!< The confifguration of the serial port object.
-      std::unique_ptr <FILE, decltype( &fclose )>  fp;                         //!< The file descriptor for the serial port opened.
-      std::unique_ptr <int, decltype( &close )>    fd;                         //!< The file pointer for the serial port opened.
-      std::string                                  pathname;                   //!< The path to the serial port device in Linux file system, example "/dev/ttyUSB0"
-
-    public:
-      SerialPort( const std::string &_pathname );
+      explicit SerialPort( void );
       ~SerialPort( void );  
 
-      StatusCode   setReadOnly    ( bool _state );
-      StatusCode   setBaudRate    ( BaudRate _baudrate );
-      StatusCode   setFlowControl ( FlowControl _flow );
-      StatusCode   setParity      ( Parity _parity );
-      StatusCode   setDataBits    ( DataBits _databits );
-      StatusCode   setStopBits    ( StopBits _stopbits );
-      StatusCode   setTimeout     ( uint8_t _timeout );
-      StatusCode   setMinBytes    ( uint8_t _minbytes );  
+      StatusCode connect( const std::string &_pathname, std::optional <SerialPort::Configuration> _config = std::nullopt );
+      StatusCode update( void );
+      StatusCode disconnect( void );
 
-      std::pair <bool, StatusCode>        getReadOnly    ( void );
-      std::pair <BaudRate, StatusCode>    getBaudRate    ( void );
-      std::pair <FlowControl, StatusCode> getFlowControl ( void );
-      std::pair <Parity, StatusCode>      getParity      ( void );
-      std::pair <DataBits, StatusCode>    getDataBits    ( void );
-      std::pair <StopBits, StatusCode>    getStopBits    ( void );
-      std::pair <uint8_t, StatusCode>     getTimeout     ( void );
-      std::pair <uint8_t, StatusCode>     getMinBytes    ( void );
+      void       setReadOnly    ( const bool _state );
+      StatusCode setBaudRate    ( const BaudRate _baudrate );
+      StatusCode setFlowControl ( const FlowControl _flow );
+      StatusCode setParity      ( const Parity _parity );
+      StatusCode setDataBits    ( const DataBits _databits );
+      StatusCode setStopBits    ( const StopBits _stopbits );
+      StatusCode setRule        ( const uint8_t _timeout, const uint8_t _minbytes );
 
-      StatusCode   flush( Buffer buf );
-      StatusCode   drain( void );
+      std::pair <std::string, bool>        isReadOnly     ( void );
+      std::pair <std::string, BaudRate>    getBaudRate    ( void );
+      std::pair <std::string, FlowControl> getFlowControl ( void );
+      std::pair <std::string, Parity>      getParity      ( void );
+      std::pair <std::string, DataBits>    getDataBits    ( void );
+      std::pair <std::string, StopBits>    getStopBits    ( void );
+      std::pair <std::string, uint8_t>     getTimeout     ( void );
+      std::pair <std::string, uint8_t>     getMinBytes    ( void );
+
+      std::string print( bool toConsole );
+
+      StatusCode flush( Buffer buf );
+      StatusCode drain( void );
       
-      bool         isValid( void );
+      bool       isValid( void );
 
-      std::pair <size_t, StatusCode> readLine ( std::vector <char> &buf, const size_t offset );
-      std::pair <size_t, StatusCode> read     ( std::vector <char> &buf, const size_t offset, const size_t length );
-      std::pair <size_t, StatusCode> write    ( const std::string  &format, ... );      
+      std::pair <size_t, StatusCode> readLine ( char * buf, const size_t size, const size_t offset );
+      std::pair <size_t, StatusCode> read     ( char * buf, const size_t size, const size_t offset, const size_t length );
+      std::pair <size_t, StatusCode> write    ( const char * format, ... );      
 
       std::pair <size_t, StatusCode> available( void );
 
-      StatusCode  setLineState( Line _line, bool state );
-      std::pair <bool, StatusCode> getLineState( Line _line );
+      StatusCode  setLineState( const Line _line, const bool state );
+      std::pair <bool, StatusCode> getLineState( const Line _line );
+
+    private:
+      struct termios tty;
+      bool getTermios( void );
+      bool applyTermios( void );
+      StatusCode fsError( void );
+
+    protected:
+      int                                          fd;                         //!< The file descriptor for the serial port opened.
+      std::unique_ptr <FILE, decltype( &fclose )>  fp;                         //!< The file pointer for the serial port opened.
+      std::string                                  pathname;                   //!< The path to the serial port device in Linux file system, example "/dev/ttyUSB0"
+      Configuration                                config;                     //!< The confifguration of the serial port object.
   };
 }
 
