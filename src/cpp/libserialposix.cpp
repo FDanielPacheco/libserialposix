@@ -50,6 +50,12 @@
 #include "libserialposix.hpp"
 
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
+ * Local Macros
+ **************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
+
+#define errorPrint( txt, ... ) fprintf( stderr, "Error: " txt ",at line %d in file %s\nErrno: %d, %s\n", ##__VA_ARGS__, __LINE__, __FILE__, errno, strerror(errno) )
+
+/***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
  * Function Description
  **************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 
@@ -64,18 +70,19 @@ SerialPort( void ) :
 
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 libposix::SerialPort::StatusCode
-libposix::SerialPort::connect( const std::string &_pathname, std::optional <SerialPort::Configuration> _config ){
+libposix::SerialPort::connect( const std::string &_pathname, std::optional <SerialPort::Configuration> _config, std::optional <uint8_t> _rdonly ){
   if( _pathname.empty( ) ){
-    fprintf(stderr, "ERROR:  pathname is empty at line %d in file %s\n", __LINE__, __FILE__);
+    errorPrint( "pathname empty" );
     return StatusCode::InvalidParameter;
   }
 
   if( _pathname.size( ) >= PATH_MAX ){
-    fprintf(stderr, "ERROR:  pathname is greater (%ld) than PATH_MAX at line %d in file %s\n", _pathname.size( ), __LINE__, __FILE__);
+    errorPrint( "pathname to long" );
     return StatusCode::NameToLong;
   }
 
   Configuration __config = _config.value_or( Configuration( ) );  
+  __config.readonly = _rdonly.value_or( __config.readonly );
 
   if( __config.readonly )
     this->fd = open( _pathname.c_str( ) , O_RDONLY | O_NOCTTY );
@@ -83,7 +90,7 @@ libposix::SerialPort::connect( const std::string &_pathname, std::optional <Seri
     this->fd = open( _pathname.c_str( ) , O_RDWR | O_NOCTTY );
 
   if( -1 == this->fd ){
-    fprintf(stderr, "ERROR:  failed to open %s: %s, at line %d in file %s\n", _pathname.c_str( ), strerror(errno), __LINE__, __FILE__);
+    errorPrint( "open(%s)", _pathname.c_str( ) );
     return StatusCode::DeviceNotFound;
   }
 
@@ -93,9 +100,9 @@ libposix::SerialPort::connect( const std::string &_pathname, std::optional <Seri
     this->fp = std::unique_ptr<FILE, decltype(&fclose)> (fdopen( this->fd, "r+" ), &fclose) ;
 
   if( !this->fp ){
-    fprintf(stderr, "ERROR:  failed to fdopen %s: %s, at line %d in file %s\n", _pathname.c_str( ), strerror(errno), __LINE__, __FILE__);
+    errorPrint( "fdopen" );
     if( -1 == close( this->fd ) )
-      fprintf(stderr, "ERROR:  failed to close %s: %s, at line %d in file %s\n", _pathname.c_str( ), strerror(errno), __LINE__, __FILE__);
+      errorPrint( "close" );
     return StatusCode::Error;
   }
 
@@ -103,7 +110,7 @@ libposix::SerialPort::connect( const std::string &_pathname, std::optional <Seri
   this->config = __config;
 
   if( StatusCode::Success != this->update( ) ){
-    fprintf(stderr, "ERROR:  failed to configure the device %s: %s, at line %d in file %s\n", _pathname.c_str( ), strerror(errno), __LINE__, __FILE__);
+    errorPrint( "update" );
     return StatusCode::Error;
   }
 
@@ -115,7 +122,7 @@ bool
 libposix::SerialPort::getTermios( void ){
   int result = tcgetattr( this->fd, &(this->tty) );
   if( 0 != result ){
-    fprintf(stderr, "ERROR: tcgetatrr (%d)(%s) at line %d in file %s\n", result, strerror(errno), __LINE__, __FILE__);
+    errorPrint( "tcgetatrr" );
     return false;
   }
   return true;
@@ -126,7 +133,7 @@ bool
 libposix::SerialPort::applyTermios( void ){
   int result = tcsetattr( this->fd, TCSANOW, &(this->tty) );
   if( 0 != result ){
-    fprintf(stderr, "ERROR: tcsetattr (%d)(%s) at line %d in file %s\n", result, strerror(errno), __LINE__, __FILE__);
+    errorPrint( "tcsetattr" );
     return false;
   }
   return true;
@@ -139,32 +146,32 @@ libposix::SerialPort::update( void ){
     return StatusCode::Error;
 
   if( StatusCode::Error == this->setBaudRate( this->config.baudrate ) ){
-    fprintf(stderr, "ERROR: set configuration (%d)(%s) at line %d in file %s\n", errno, strerror(errno), __LINE__, __FILE__);
+    errorPrint( "setBaudRate" );
     return StatusCode::Error;
   }
 
   if( StatusCode::Error == this->setParity( this->config.parity ) ){
-    fprintf(stderr, "ERROR: set configuration (%d)(%s) at line %d in file %s\n", errno, strerror(errno), __LINE__, __FILE__);
+    errorPrint( "setParity" );
     return StatusCode::Error;
   }
 
   if( StatusCode::Error == this->setDataBits( this->config.bData ) ){
-    fprintf(stderr, "ERROR: set configuration (%d)(%s) at line %d in file %s\n", errno, strerror(errno), __LINE__, __FILE__);
+    errorPrint( "setDataBits" );
     return StatusCode::Error;
   }
 
   if( StatusCode::Error == this->setStopBits( this->config.bStop ) ){
-    fprintf(stderr, "ERROR: set configuration (%d)(%s) at line %d in file %s\n", errno, strerror(errno), __LINE__, __FILE__);
+    errorPrint( "setStopBits" );
     return StatusCode::Error;
   }
 
   if( StatusCode::Error == this->setFlowControl( this->config.flow ) ){
-    fprintf(stderr, "ERROR: set configuration (%d)(%s) at line %d in file %s\n", errno, strerror(errno), __LINE__, __FILE__);
+    errorPrint( "setFlowControl" );
     return StatusCode::Error;
   }
 
   if( StatusCode::Error == this->setRule( this->config.timeout, this->config.minBytes ) ){
-    fprintf(stderr, "ERROR: set configuration (%d)(%s) at line %d in file %s\n", errno, strerror(errno), __LINE__, __FILE__);
+    errorPrint( "setRule" );
     return StatusCode::Error;
   }
   return StatusCode::Success;
@@ -173,14 +180,12 @@ libposix::SerialPort::update( void ){
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 bool
 libposix::SerialPort::isValid( void ){
-  if( 0 > this->fd ){
-    fprintf(stderr, "WARNING: serial port (file descriptor) isn't valid\n");
+  if( 0 > this->fd )
     return false;
-  }
-  if( -1 == fcntl( this->fd, F_GETFD ) ){
-    fprintf(stderr, "WARNING: serial port (file descriptor) isn't opened\n");
+
+  if( -1 == fcntl( this->fd, F_GETFD ) )
     return false;
-  }
+
   return true;
 }
 
@@ -198,13 +203,13 @@ libposix::SerialPort::setBaudRate( const BaudRate _baudrate ){
 
   int result = cfsetispeed( &(this->tty), _baudrate );
   if( 0 != result ){
-    fprintf(stderr, "ERROR: cfsetispeed (%d)(%s) at line %d in file %s\n", result, strerror(errno), __LINE__, __FILE__);
+    errorPrint( "cfsetispeed" );
     return StatusCode::Error;
   }
 
   result = cfsetospeed( &(this->tty), _baudrate );
   if( 0 != result ){
-    fprintf(stderr, "ERROR: cfsetospeed (%d)(%s) at line %d in file %s\n", result, strerror(errno), __LINE__, __FILE__);
+    errorPrint( "cfsetospeed" );
     return StatusCode::Error;
   }
 
@@ -536,7 +541,7 @@ libposix::SerialPort::disconnect( void ){
     return StatusCode::Error;
   
   if( EOF == fclose( this->fp.get( ) ) ){
-    fprintf(stderr, "ERROR:  failed to fclose, %s, at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
+    errorPrint( "fclose" );
     return StatusCode::Error;
   }
 
@@ -560,7 +565,7 @@ libposix::SerialPort::flush( Buffer buf ){
   }
 
   if( -1 == tcflush( this->fd, option ) ){
-    fprintf(stderr, "ERROR: tcdflush the serial port failed: %s at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
+    errorPrint( "tcflush" );
     return StatusCode::Error;
   }
 
@@ -574,7 +579,7 @@ libposix::SerialPort::drain( void ){
     return StatusCode::Error;
 
   if( -1 == tcdrain( this->fd ) ){
-    fprintf(stderr, "ERROR: tcdrain the serial port failed: %s at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
+    errorPrint( "tcdrain" );
     return StatusCode::Error;
   }
 
@@ -589,10 +594,10 @@ libposix::SerialPort::fsError( void ){
     return StatusCode::Timeout;
   }
   
-  if( ferror( this->fp.get( ) ) ) 
-    fprintf(stderr, "ERROR: failed: %s at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
+  if( ferror( this->fp.get( ) ) )
+    errorPrint( "ferror" );
   else 
-    fprintf(stderr, "ERROR: unknown reason at line %d in file %s\n", __LINE__, __FILE__);
+    errorPrint( "else_ferror" );
 
   clearerr( this->fp.get( ) );
   return StatusCode::Error;
@@ -605,7 +610,7 @@ libposix::SerialPort::readLine( char * buf, const size_t size, const size_t offs
     return std::pair <size_t, libposix::SerialPort::StatusCode> (0, StatusCode::Error);
 
   if( size <= offset ){
-    fprintf(stderr, "ERROR: readLine, %s at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
+    errorPrint( "readLine overflow" );
     return std::pair <size_t, libposix::SerialPort::StatusCode> (0, StatusCode::Error);
   }
 
@@ -624,7 +629,7 @@ libposix::SerialPort::read( char * buf, const size_t size, const size_t offset, 
     return std::pair <size_t, libposix::SerialPort::StatusCode> (0, StatusCode::Error);
 
   if( size <= (offset + length) ){
-    fprintf(stderr, "ERROR: read, %s at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
+    errorPrint( "read overflow" );
     return std::pair <size_t, libposix::SerialPort::StatusCode> (0, StatusCode::Error);
   }
 
@@ -654,13 +659,13 @@ libposix::SerialPort::write( const char * format, ... ){
   int len = vsnprintf( buf, sizeof(buf), format, args );
 
   if( 0 > len ) {
-    fprintf(stderr, "ERROR: Formatting string failed at line %d in file %s\n", __LINE__, __FILE__);
+    errorPrint( "vsnprintf" );
     va_end( args );
     return std::pair <size_t, libposix::SerialPort::StatusCode> (0, StatusCode::Error);
   }
 
   if( (int) sizeof( buf ) <= len ) {
-    fprintf(stderr, "ERROR: Formatted string too long for buffer at line %d in file %s\n", __LINE__, __FILE__);
+    errorPrint( "write overflow" );
     va_end( args );
     return std::pair <size_t, libposix::SerialPort::StatusCode> (0, StatusCode::Error);
   }
@@ -682,12 +687,12 @@ libposix::SerialPort::available( void ){
 
   int32_t len;
   if( -1 == ioctl( this->fd, FIONREAD, &len ) ){
-    fprintf(stderr, "ERROR: ioctl(FIONREAD) the serial port failed: %s at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
+    errorPrint( "available ioctl" );
     return std::pair <size_t, libposix::SerialPort::StatusCode> (0, StatusCode::Error);
   }  
 
   if( 0 > len ){
-    fprintf(stderr, "ERROR: ioctl(FIONREAD) the serial port failed: %s at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
+    errorPrint( "available ioctl" );
     return std::pair <size_t, libposix::SerialPort::StatusCode> (0, StatusCode::Error);
   }
 
@@ -702,7 +707,7 @@ libposix::SerialPort::setLineState( const Line _line, const bool state ){
 
   int status;
   if( -1 == ioctl( this->fd, TIOCMGET, &status ) ){
-    fprintf(stderr, "ERROR: ioctl(TIOCMGET) the serial port failed: %s at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
+    errorPrint( "setLineState ioctl" );
     return StatusCode::Error;
   }
   
@@ -712,7 +717,7 @@ libposix::SerialPort::setLineState( const Line _line, const bool state ){
     status &= ~static_cast<std::uint8_t>(_line);
 
   if( -1 == ioctl( this->fd, TIOCMSET, &status ) ){
-    fprintf(stderr, "ERROR: ioctl(TIOCMSET) the serial port failed: %s at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
+    errorPrint( "setLineState ioctl" );
     return StatusCode::Error;
   }
 
@@ -727,7 +732,7 @@ libposix::SerialPort::getLineState( const Line _line ){
 
   int status;
   if( -1 == ioctl( this->fd, TIOCMGET, &status ) ){
-    fprintf(stderr, "ERROR: ioctl(TIOCMGET) the serial port failed: %s at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
+    errorPrint( "getLineState ioctl" );
     return std::pair <size_t, libposix::SerialPort::StatusCode> (0, StatusCode::Error);
   }
   return std::pair <size_t, libposix::SerialPort::StatusCode> ( ( (uint8_t) status & static_cast<std::uint8_t>(_line) ) != 0, StatusCode::Success);

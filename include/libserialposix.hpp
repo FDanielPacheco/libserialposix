@@ -123,20 +123,60 @@ libposix{
 
       struct 
       Configuration {
-        bool        readonly   = false;                                        //!< If the file pointer will be given in read only mode, example NO = r+.
-        BaudRate    baudrate   = B9600;                                        //!< The baud rate of the communication in bits per second, example B9600.
-        FlowControl flow       = FlowControl::None;                            //!< The hardware flow control, example Hardware.
-        Parity      parity     = Parity::None;                                 //!< The detection of error parity, example Odd.
-        DataBits    bData      = DataBits::Eight;                              //!< The number of bits per serial word, example 8.
-        StopBits    bStop      = StopBits::One;                                //!< The number of stop bits per serial word, example 1.
-        uint8_t     timeout    = 1;                                            //!< The time any read function will wait in deciseconds for the information to arrive, example 200.
-        uint8_t     minBytes   = 0;                                            //!< The minimum number of bytes to necessary receive before returning the read function.
+        bool        readonly   = false;                                        //!< If the file pointer will be given in read only mode, default false = r+.
+        BaudRate    baudrate   = B9600;                                        //!< The baud rate of the communication in bits per second, default B9600.
+        FlowControl flow       = FlowControl::None;                            //!< The hardware flow control, default None.
+        Parity      parity     = Parity::None;                                 //!< The detection of error parity, default None.
+        DataBits    bData      = DataBits::Eight;                              //!< The number of bits per serial word, default 8.
+        StopBits    bStop      = StopBits::One;                                //!< The number of stop bits per serial word, default 1.
+        uint8_t     timeout    = 1;                                            //!< The time any read function will wait in deciseconds for the information to arrive, default 1.
+        uint8_t     minBytes   = 0;                                            //!< The minimum number of bytes to necessary receive before returning the read function, default 0.
       };
 
       explicit SerialPort( void );
       ~SerialPort( void );  
 
-      StatusCode connect( const std::string &_pathname, std::optional <SerialPort::Configuration> _config = std::nullopt );
+      /**********************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************//**
+      * @brief Initializes the serial port interface.
+      *  
+      * @param[in]  _pathname The absolute path for the device file, example `/dev/ttyUSB0`
+      * @param[in]  _config The serial port configuration data structure (`SerialPort::Configuration`), this configuration must have been updated with the user's desired information, can be nullable (std::nullopt) or not specified if the user desire the default configuration present in `Configuration`. 
+      * @param[in]  _rdonly The permission of the file descriptor associated with the serial port, 0 is read/write and 1 is read only, can be nullable (std::nullopt) or not specified. 
+      * 
+      * @return Upon success, performing the process of opening the serial port, it returns StatusCode::Success.\n
+      *         Otherwise, returns the indication of the error.
+      * 
+      *  - `InvalidParameter`: Invalid argument \n
+      *  - `NameToLong`: Pathname to long \n
+      *  - `DeviceNotFound`: Open operation failed \n
+      *  - `Error`: Other error
+      * 
+      * @b Example \n
+      *  Opening the serial port with 115200 bps and 1 second until timeout, other configurations are the default: \n
+      *  Method-1:
+      * @code{.c}
+      *    using namespace libposix;
+      *    SerialPort::Configuration cfg;
+      *    cfg.baudrate = B115200;
+      *    cfg.timeout = 10;
+      *    SerialPort sr;
+      *    if( SerialPort::StatusCode::Success != sr.connect( "/dev/ttyUSB0", cfg ) )
+      *      // handle error
+      *    // ready to use ...
+      * @endcode
+      *   Method-2:
+      * @code{.c}
+      *    using namespace libposix;
+      *    SerialPort sr;
+      *    if( SerialPort::StatusCode::Success != sr.connect( "/dev/ttyUSB0" ) )
+      *      // handle error
+      *    sr.setBaudRate( B115200 );
+      *    sr.setRule( 10, 0 );
+      *    // ready to use ...
+      * @endcode
+      *   
+      **************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
+      StatusCode connect( const std::string &_pathname, std::optional <SerialPort::Configuration> _config = std::nullopt, std::optional <uint8_t> _rdonly = std::nullopt );
       StatusCode update( void );
       StatusCode disconnect( void );
 

@@ -4,8 +4,11 @@ using namespace libposix;
 
 int
 main( void ){
+  SerialPort::Configuration cfg;
+  cfg.baudrate = B115200;
+  cfg.timeout = 10;
   SerialPort sr;
-  if( SerialPort::StatusCode::Success != sr.connect( "/dev/ttyACM0" ) )
+  if( SerialPort::StatusCode::Success != sr.connect( "/dev/ttyACM0", cfg ) )
     return EXIT_FAILURE;
 
   (void) sr.setBaudRate( B19200 );

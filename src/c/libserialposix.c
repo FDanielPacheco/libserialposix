@@ -41,6 +41,20 @@
 #include "libserialposix.h"
 
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
+ * Local Function Prototype
+ **************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
+
+int8_t get_termios( int fd, struct termios * tty );
+int8_t apply_termios( int fd, struct termios * tty );
+int8_t fs_error( FILE * fp );
+
+/***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
+ * Local Macros
+ **************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
+
+#define error_print( txt, ... ) fprintf( stderr, "Error: " txt ",at line %d in file %s\n Errno: %d, %s\n", ##__VA_ARGS__, __LINE__, __FILE__, errno, strerror(errno) )
+
+/***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
  * Function Description
  **************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 
@@ -49,13 +63,13 @@ serial_t *
 serial_open( const char * pathname, uint8_t readonly, const serial_config_t * config ){
   if( !pathname ){
     errno = EINVAL;
-    fprintf(stderr, "ERROR:  pathname is 'NULL' at line %d in file %s\n", __LINE__, __FILE__);
+    error_print( "pathname is `NULL`" );
     return NULL;
   }
 
   if( strlen(pathname) >= PATH_MAX ){
     errno = ENAMETOOLONG;
-    fprintf(stderr, "ERROR:  pathname is greater (%ld) than PATH_MAX at line %d in file %s\n", strlen(pathname), __LINE__, __FILE__);
+    error_print( "pathname is greater than %d", PATH_MAX );
     return NULL;
   }
   
@@ -65,7 +79,7 @@ serial_open( const char * pathname, uint8_t readonly, const serial_config_t * co
   serial_t * serial = (serial_t *) malloc( sizeof( serial_t ));
   if( !serial ){
     errno = ENOMEM;
-    fprintf(stderr, "ERROR: malloc (%s) at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
+    error_print( "malloc" );
     return NULL;
   }
 
@@ -75,7 +89,7 @@ serial_open( const char * pathname, uint8_t readonly, const serial_config_t * co
     serial->fd = open( pathname, O_RDWR | O_NOCTTY );
 
   if( -1 == serial->fd ){
-    fprintf(stderr, "ERROR:  failed to open %s: %s, at line %d in file %s\n", pathname, strerror(errno), __LINE__, __FILE__);
+    error_print( "open(%s)", pathname );
     free( serial );
     return NULL;
   }
@@ -85,10 +99,10 @@ serial_open( const char * pathname, uint8_t readonly, const serial_config_t * co
   else   
     serial->fp = fdopen( serial->fd, "r+" );
 
-  if( NULL == serial->fp ){
-    fprintf(stderr, "ERROR:  failed to fdopen %s: %s, at line %d in file %s\n", pathname, strerror(errno), __LINE__, __FILE__);
+  if( !serial->fp ){
+    error_print( "fdopen" );
     if( -1 == close( serial->fd ) )
-      fprintf(stderr, "ERROR:  failed to close %s: %s, at line %d in file %s\n", pathname, strerror(errno), __LINE__, __FILE__);
+      error_print( "close" );
     free( serial );
     return NULL;
   } 
@@ -99,14 +113,14 @@ serial_open( const char * pathname, uint8_t readonly, const serial_config_t * co
   if( !config ){
     serial_config_t config_default;
     if( -1 == serial_default_config( &config_default ) ){
-      fprintf(stderr, "ERROR:  failed to set the default parameters, at line %d in file %s\n", __LINE__, __FILE__);
+      error_print( "default_config" );
       serial_close( serial );
       free( serial );
       return NULL;
     }
 
     if( -1 == serial_config_update( &config_default, serial ) ){
-      fprintf(stderr, "ERROR:  failed to configure the serial port, at line %d in file %s\n", __LINE__, __FILE__);
+      error_print( "config_update" );
       serial_close( serial );
       free( serial );
       return NULL;
@@ -115,7 +129,7 @@ serial_open( const char * pathname, uint8_t readonly, const serial_config_t * co
   }
 
   if( -1 == serial_config_update( config, serial ) ){
-    fprintf(stderr, "ERROR:  failed to configure the serial port, at line %d in file %s\n", __LINE__, __FILE__);
+    error_print( "config_update" );
     serial_close( serial );
     free( serial );
     return NULL;
@@ -126,20 +140,11 @@ serial_open( const char * pathname, uint8_t readonly, const serial_config_t * co
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 int8_t 
 serial_close( serial_t * serial ){
-  if( !serial ){
-    errno = EINVAL;
-    fprintf(stderr, "ERROR: serial is 'NULL' at line %d in file %s\n", __LINE__, __FILE__);
+  if( !serial_valid( serial ) )
     return -1;
-  }
-
-  if( !serial_valid( serial ) ){
-    errno = EBADF;
-    fprintf(stderr, "ERROR: serial port ins't opened at line %d in file %s\n", __LINE__, __FILE__);
-    return -1;
-  }
 
   if( EOF == fclose( serial->fp ) ){
-    fprintf(stderr, "ERROR:  failed to fclose, %s, at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
+    error_print( "fclose" );
     return -1;
   }
 
@@ -151,7 +156,7 @@ int8_t
 serial_default_config( serial_config_t * config ){
   if( !config ){
     errno = EINVAL;
-    fprintf(stderr, "ERROR: config is 'NULL' at line %d in file %s\n", __LINE__, __FILE__);
+    error_print( "config null" );
     return -1;
   }
   config->baudrate = B9600;
@@ -169,67 +174,40 @@ serial_default_config( serial_config_t * config ){
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 int8_t 
 serial_set_baudrate( const baudRate_t baudrate, const serial_t * serial ){
-  if( !serial ){
-    errno = EINVAL;
-    fprintf(stderr, "ERROR: serial is 'NULL' at line %d in file %s\n", __LINE__, __FILE__);
+  if( !serial_valid( serial ) )
     return -1;
-  }
-
-  if( !serial_valid( serial ) ){
-    errno = EBADF;
-    fprintf(stderr, "ERROR: serial port ins't opened at line %d in file %s\n", __LINE__, __FILE__);
-    return -1;
-  }
 
   struct termios tty;
-  int result = tcgetattr( serial->fd, &tty );
-  if( 0 != result ){
-    fprintf(stderr, "ERROR: tcgetatrr (%d)(%s) at line %d in file %s\n", result, strerror(errno), __LINE__, __FILE__);
+  if( !get_termios( serial->fd, &tty ) )
     return -1;
-  }
 
-  result = cfsetispeed( &tty, baudrate );
+  int result = cfsetispeed( &tty, baudrate );
   if( 0 != result ){
-    fprintf(stderr, "ERROR: cfsetispeed (%d)(%s) at line %d in file %s\n", result, strerror(errno), __LINE__, __FILE__);
+    error_print( "cfsetispeed" );
     return -1;
   }
 
   result = cfsetospeed( &tty, baudrate );
   if( 0 != result ){
-    fprintf(stderr, "ERROR: cfsetospeed (%d)(%s) at line %d in file %s\n", result, strerror(errno), __LINE__, __FILE__);
+    error_print( "cfsetospeed" );
     return -1;
   }
   
-  result = tcsetattr( serial->fd, TCSANOW, &tty );
-  if( 0 != result ){
-    fprintf(stderr, "ERROR: tcsetattr (%d)(%s) at line %d in file %s\n", result, strerror(errno), __LINE__, __FILE__);
+  if( !apply_termios( serial->fd, &tty ) )
     return -1;
-  }
-  
+
   return 0;
 }
 
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 int8_t
 serial_set_parity( const parity_t parity, const serial_t * serial ){
-  if( !serial ){
-    errno = EINVAL;
-    fprintf(stderr, "ERROR: serial is 'NULL' at line %d in file %s\n", __LINE__, __FILE__);
+  if( !serial_valid( serial ) )
     return -1;
-  }
-
-  if( !serial_valid( serial ) ){
-    errno = EBADF;
-    fprintf(stderr, "ERROR: serial port ins't opened at line %d in file %s\n", __LINE__, __FILE__);
-    return -1;
-  }
 
   struct termios tty;
-  int result = tcgetattr( serial->fd, &tty );
-  if( 0 != result ){
-    fprintf(stderr, "ERROR: tcgetatrr (%d)(%s) at line %d in file %s\n", result, strerror(errno), __LINE__, __FILE__);
+  if( !get_termios( serial->fd, &tty ) )
     return -1;
-  }
   
   switch( parity ){
     default:
@@ -254,35 +232,21 @@ serial_set_parity( const parity_t parity, const serial_t * serial ){
       break;
   }
 
-  result = tcsetattr( serial->fd, TCSANOW, &tty );
-  if( 0 != result ){
-    fprintf(stderr, "ERROR: tcsetattr (%d)(%s) at line %d in file %s\n", result, strerror(errno), __LINE__, __FILE__);
+  if( !apply_termios( serial->fd, &tty ) )
     return -1;
-  }
+
   return 0;
 }
 
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 int8_t
 serial_set_stopbits( const stopBits_t stopBits, const serial_t * serial ){
-  if( !serial ){
-    errno = EINVAL;
-    fprintf(stderr, "ERROR: serial is 'NULL' at line %d in file %s\n", __LINE__, __FILE__);
+  if( !serial_valid( serial ) )
     return -1;
-  }
-
-  if( !serial_valid( serial ) ){
-    errno = EBADF;
-    fprintf(stderr, "ERROR: serial port ins't opened at line %d in file %s\n", __LINE__, __FILE__);
-    return -1;
-  }
 
   struct termios tty;
-  int result = tcgetattr( serial->fd, &tty );
-  if( 0 != result ){
-    fprintf(stderr, "ERROR: tcgetatrr (%d)(%s) at line %d in file %s\n", result, strerror(errno), __LINE__, __FILE__);
+  if( !get_termios( serial->fd, &tty ) )
     return -1;
-  }
 
   switch( stopBits ){
     default:
@@ -298,11 +262,8 @@ serial_set_stopbits( const stopBits_t stopBits, const serial_t * serial ){
       break;
   }
 
-  result = tcsetattr( serial->fd, TCSANOW, &tty );
-  if( 0 != result ){
-    fprintf(stderr, "ERROR: %s at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
+  if( !apply_termios( serial->fd, &tty ) )
     return -1;
-  }
 
   return 0;
 }
@@ -310,24 +271,12 @@ serial_set_stopbits( const stopBits_t stopBits, const serial_t * serial ){
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 int8_t
 serial_set_databits( const dataBits_t dataBits, const serial_t * serial ){
-  if( !serial ){
-    errno = EINVAL;
-    fprintf(stderr, "ERROR: serial is 'NULL' at line %d in file %s\n", __LINE__, __FILE__);
+  if( !serial_valid( serial ) )
     return -1;
-  }
-
-  if( !serial_valid( serial ) ){
-    errno = EBADF;
-    fprintf(stderr, "ERROR: serial port ins't opened at line %d in file %s\n", __LINE__, __FILE__);
-    return -1;
-  }
 
   struct termios tty;
-  int result = tcgetattr( serial->fd, &tty );
-  if( 0 != result ){
-    fprintf(stderr, "ERROR: tcgetatrr (%d)(%s) at line %d in file %s\n", result, strerror(errno), __LINE__, __FILE__);
+  if( !get_termios( serial->fd, &tty ) )
     return -1;
-  }
 
   tty.c_cflag &= (tcflag_t) ~CSIZE;                                          // Clear all the size bits, then use one of the statements below
   switch( dataBits ){
@@ -343,35 +292,21 @@ serial_set_databits( const dataBits_t dataBits, const serial_t * serial ){
       break;
   }
 
-  result = tcsetattr( serial->fd, TCSANOW, &tty );
-  if( 0 != result ){
-    fprintf(stderr, "ERROR: %s at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
+  if( !apply_termios( serial->fd, &tty ) )
     return -1;
-  }
+
   return 0;
 }
 
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 int8_t
 serial_set_flowcontrol( const flowControl_t flowControl, const serial_t * serial ){
-  if( !serial ){
-    errno = EINVAL;
-    fprintf(stderr, "ERROR: serial is 'NULL' at line %d in file %s\n", __LINE__, __FILE__);
+  if( !serial_valid( serial ) )
     return -1;
-  }
-
-  if( !serial_valid( serial ) ){
-    errno = EBADF;
-    fprintf(stderr, "ERROR: serial port ins't opened at line %d in file %s\n", __LINE__, __FILE__);
-    return -1;
-  }
 
   struct termios tty;
-  int result = tcgetattr( serial->fd, &tty );
-  if( 0 != result ){
-    fprintf(stderr, "ERROR: tcgetatrr (%d)(%s) at line %d in file %s\n", result, strerror(errno), __LINE__, __FILE__);
+  if( !get_termios( serial->fd, &tty ) )
     return -1;
-  }
 
   switch( flowControl ){
     default:
@@ -400,11 +335,8 @@ serial_set_flowcontrol( const flowControl_t flowControl, const serial_t * serial
       break;
   }
 
-  result = tcsetattr( serial->fd, TCSANOW, &tty );
-  if( 0 != result ){
-    fprintf(stderr, "ERROR: %s at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
+  if( !apply_termios( serial->fd, &tty ) )
     return -1;
-  }
 
   return 0;
 }
@@ -412,24 +344,12 @@ serial_set_flowcontrol( const flowControl_t flowControl, const serial_t * serial
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 int8_t
 serial_set_rule( const uint8_t timeout, const uint8_t min, const serial_t * serial ){
-  if( !serial ){
-    errno = EINVAL;
-    fprintf(stderr, "ERROR: serial is 'NULL' at line %d in file %s\n", __LINE__, __FILE__);
+  if( !serial_valid( serial ) )
     return -1;
-  }
-
-  if( !serial_valid( serial ) ){
-    errno = EBADF;
-    fprintf(stderr, "ERROR: serial port ins't opened at line %d in file %s\n", __LINE__, __FILE__);
-    return -1;
-  }
 
   struct termios tty;
-  int result = tcgetattr( serial->fd, &tty );
-  if( 0 != result ){
-    fprintf(stderr, "ERROR: tcgetatrr (%d)(%s) at line %d in file %s\n", result, strerror(errno), __LINE__, __FILE__);
+  if( !get_termios( serial->fd, &tty ) )
     return -1;
-  }
 
   tty.c_lflag &= (tcflag_t) ~(ICANON);                                        // Disable canonical mode
   tty.c_lflag &= (tcflag_t) ~(ECHO);                                          // Disable echo
@@ -459,11 +379,8 @@ serial_set_rule( const uint8_t timeout, const uint8_t min, const serial_t * seri
   tty.c_cc[VLNEXT]   = 0;                                                     // Disable literal next character - not relevant in raw mode
   tty.c_cc[VEOL2]    = 0;                                                     // Disable alternate end-of-line character - not relevant in raw mode
 
-  result = tcsetattr( serial->fd, TCSANOW, &tty );
-  if( 0 != result ){
-    fprintf(stderr, "ERROR: %s at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
+  if( !apply_termios( serial->fd, &tty ) )
     return -1;
-  }
 
   return 0;
 }
@@ -471,45 +388,42 @@ serial_set_rule( const uint8_t timeout, const uint8_t min, const serial_t * seri
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 int8_t 
 serial_config_update( const serial_config_t * config, serial_t * serial ){
-  if( !config || !serial ){
+  if( !config ){
     errno = EINVAL;
-    fprintf(stderr, "ERROR: config and/or serial are 'NULL' at line %d in file %s\n", __LINE__, __FILE__);
+    error_print( "config null" );
     return -1;
   }
 
-  if( !serial_valid( serial ) ){
-    errno = EBADF;
-    fprintf(stderr, "ERROR: serial port ins't opened at line %d in file %s\n", __LINE__, __FILE__);
+  if( !serial_valid( serial ) )
+    return -1;
+
+  if( -1 == serial_set_baudrate( config->baudrate, serial ) ){
+    error_print( "serial_set_baudrate" );
     return -1;
   }
-  
+
   if( -1 == serial_set_parity( config->parity, serial ) ){
-    fprintf(stderr, "ERROR: set configuration (%d)(%s) at line %d in file %s\n", errno, strerror(errno), __LINE__, __FILE__);
+    error_print( "serial_set_parity" );
     return -1;
   }
 
   if( -1 == serial_set_stopbits( config->stopBits, serial ) ){
-    fprintf(stderr, "ERROR: set configuration (%d)(%s) at line %d in file %s\n", errno, strerror(errno), __LINE__, __FILE__);
+    error_print( "serial_set_stopbits" );
     return -1;
   }
 
   if( -1 == serial_set_databits( config->dataBits, serial ) ){
-    fprintf(stderr, "ERROR: set configuration (%d)(%s) at line %d in file %s\n", errno, strerror(errno), __LINE__, __FILE__);
+    error_print( "serial_set_databits" );
     return -1;
   }
       
   if( -1 == serial_set_flowcontrol( config->flow, serial ) ){
-    fprintf(stderr, "ERROR: set configuration (%d)(%s) at line %d in file %s\n", errno, strerror(errno), __LINE__, __FILE__);
+    error_print( "serial_set_flowcontrol" );
     return -1;
   }
   
-  if( 0 != serial_set_rule( config->timeout, config->minBytes, serial ) ){
-    fprintf(stderr, "ERROR: set configuration (%d)(%s) at line %d in file %s\n", errno, strerror(errno), __LINE__, __FILE__);
-    return -1;
-  }
-
-  if( 0 != serial_set_baudrate( config->baudrate, serial ) ){
-    fprintf(stderr, "ERROR: set configuration (%d)(%s) at line %d in file %s\n", errno, strerror(errno), __LINE__, __FILE__);
+  if( -1 == serial_set_rule( config->timeout, config->minBytes, serial ) ){
+    error_print( "serial_set_rule" );
     return -1;
   }
 
@@ -520,41 +434,24 @@ serial_config_update( const serial_config_t * config, serial_t * serial ){
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 size_t 
 serial_readLine( char * buf, const size_t size, const size_t offset, const serial_t * serial ){  
-  if( !buf || !serial ){
+  if( !buf ){
     errno = EINVAL;
-    fprintf(stderr, "ERROR: serial and/or buf are 'NULL' at line %d in file %s\n", __LINE__, __FILE__);
+    error_print( "buf null" );
     return 0;
   }
 
-  if( !serial_valid( serial ) ){
-    errno = EBADF;
-    fprintf(stderr, "ERROR: serial port ins't opened at line %d in file %s\n", __LINE__, __FILE__);
+  if( !serial_valid( serial ) )
     return 0;
-  }
 
   if( size <= offset ){
     errno = ENOMEM;
-    fprintf(stderr, "ERROR: readLine, %s at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
+    error_print( "serial_readLine overflow" );
     return 0;
   }
 
   clearerr( serial->fp );
-
-  if( NULL == fgets( buf + offset, (int) (size - offset), serial->fp ) ){
-    if( feof( serial->fp ) ){
-      clearerr( serial->fp );
-      errno = ETIME;
-      return 0;
-    }
-    
-    else if( ferror( serial->fp ) ) 
-      fprintf(stderr, "ERROR: fgets failed: %s at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
-    else 
-      fprintf(stderr, "ERROR: fgets returned NULL for unknown reason at line %d in file %s\n", __LINE__, __FILE__);
-
-    clearerr( serial->fp );
-    return 0;
-  }
+  if( !fgets( buf + offset, (int) (size - offset), serial->fp ) )
+    return (size_t) fs_error( serial->fp );
 
   return strlen( buf + offset );  
 }
@@ -562,21 +459,18 @@ serial_readLine( char * buf, const size_t size, const size_t offset, const seria
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 size_t 
 serial_read( char * buf, const size_t size, const size_t offset, const size_t length, const serial_t * serial ){
-  if( !buf || !serial ){
+  if( !buf ){
     errno = EINVAL;
-    fprintf(stderr, "ERROR: serial and/or buf are 'NULL' at line %d in file %s\n", __LINE__, __FILE__);
+    error_print( "buf null" );
     return 0;
   }
 
-  if( !serial_valid( serial ) ){
-    errno = EBADF;
-    fprintf(stderr, "ERROR: serial port ins't opened at line %d in file %s\n", __LINE__, __FILE__);
+  if( !serial_valid( serial ) )
     return 0;
-  }
 
   if( size <= (offset + length) ){
     errno = ENOMEM;
-    fprintf(stderr, "ERROR: serial_read, %s at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
+    error_print( "serial_read overflow" );
     return 0;
   }
 
@@ -584,21 +478,8 @@ serial_read( char * buf, const size_t size, const size_t offset, const size_t le
 
   size_t len = fread( buf + offset, 1, length, serial->fp );
 
-  if( length > len ){
-    if( feof( serial->fp ) ){
-      clearerr( serial->fp );
-      errno = ETIME;
-      return 0;
-    }
-    
-    else if( ferror( serial->fp ) ) 
-      fprintf(stderr, "ERROR: fgets failed: %s at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
-    else 
-      fprintf(stderr, "ERROR: fgets returned NULL for unknown reason at line %d in file %s\n", __LINE__, __FILE__);
-
-    clearerr( serial->fp );
-    return 0;
-  }
+  if( length > len )
+    return (size_t) fs_error( serial->fp );
 
   return len;  
 }
@@ -606,17 +487,14 @@ serial_read( char * buf, const size_t size, const size_t offset, const size_t le
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 size_t 
 serial_write( const serial_t * serial, const char * format, ... ){
-  if( !serial || !format ) {
+  if( !format ) {
     errno = EINVAL;
-    fprintf(stderr, "ERROR: serial and/or format are 'NULL' at line %d in file %s\n", __LINE__, __FILE__);
+    error_print( "format null" );
     return 0;
   }
 
-  if( !serial_valid( serial ) ){
-    errno = EBADF;
-    fprintf(stderr, "ERROR: serial port ins't opened at line %d in file %s\n", __LINE__, __FILE__);
+  if( !serial_valid( serial ) )
     return 0;
-  }
 
   va_list args;
   va_start( args, format );
@@ -625,30 +503,23 @@ serial_write( const serial_t * serial, const char * format, ... ){
   int len = vsnprintf( buf, sizeof(buf), format, args );
 
   if( 0 > len ) {
-    fprintf(stderr, "ERROR: Formatting string failed at line %d in file %s\n", __LINE__, __FILE__);
+    error_print( "vsnprintf" );
     va_end( args );
     return 0;
   }
 
   if( (int) sizeof( buf ) <= len ) {
-    fprintf(stderr, "ERROR: Formatted string too long for buffer at line %d in file %s\n", __LINE__, __FILE__);
+    error_print( "write overflow" );
     va_end( args );
     return 0;
   }
 
   size_t size = fwrite( buf, 1, (size_t) len, serial->fp );
 
-  if( size < (size_t) len ){
-    if( ferror( serial->fp ) )
-      fprintf(stderr, "ERROR: write to serial port failed: %s at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
-    else
-      fprintf(stderr, "WARNING: Wrote less bytes than expected to the serial port [debug:(len)%d,(size)%ld] at line %d in file %s\n", len, size, __LINE__, __FILE__);
-    
-    va_end( args );
-    return 0;
-  }
+  va_end( args );
+  if( size < (size_t) len )
+    return (size_t) fs_error( serial->fp );
 
-  va_end( args ); 
   return size;
 }
 
@@ -657,17 +528,17 @@ uint8_t
 serial_valid( const serial_t * serial ){
   if( !serial ){
     errno = EINVAL;
-    fprintf(stderr, "ERROR: serial is 'NULL' at line %d in file %s\n", __LINE__, __FILE__);
+    error_print( "serial null" );
     return 0;
   }
 
   if( 0 > serial->fd ){
-    fprintf(stderr, "WARNING: serial port (file descriptor) isn't valid\n");
+    errno = EBADF;
     return 0;
   }
 
   if( -1 == fcntl( serial->fd, F_GETFD ) ){
-    fprintf(stderr, "WARNING: serial port (file descriptor) isn't opened\n");
+    errno = EBADF;
     return 0;
   }
 
@@ -677,20 +548,11 @@ serial_valid( const serial_t * serial ){
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 int8_t 
 serial_drain( const serial_t * serial ){
-  if( !serial ) {
-    errno = EINVAL;
-    fprintf(stderr, "ERROR: serial is 'NULL' at line %d in file %s\n", __LINE__, __FILE__);
+  if( !serial_valid( serial ) )
     return -1;
-  }
-
-  if( !serial_valid( serial ) ){
-    errno = EBADF;
-    fprintf(stderr, "ERROR: serial port ins't opened at line %d in file %s\n", __LINE__, __FILE__);
-    return -1;
-  }
   
   if( -1 == tcdrain( serial->fd ) ){
-    fprintf(stderr, "ERROR: tcdrain the serial port failed: %s at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
+    error_print( "tcdrain" );
     return -1;
   }
 
@@ -700,20 +562,11 @@ serial_drain( const serial_t * serial ){
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 int8_t 
 serial_flush( const serial_t * serial, uint8_t option ){
-  if( !serial ) {
-    errno = EINVAL;
-    fprintf(stderr, "ERROR: serial is 'NULL' at line %d in file %s\n", __LINE__, __FILE__);
+  if( !serial_valid( serial ) )
     return -1;
-  }
-
-  if( !serial_valid( serial ) ){
-    errno = EBADF;
-    fprintf(stderr, "ERROR: serial port ins't opened at line %d in file %s\n", __LINE__, __FILE__);
-    return -1;
-  }
   
   if( -1 == tcflush( serial->fd, option ) ){
-    fprintf(stderr, "ERROR: tcdflush the serial port failed: %s at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
+    error_print( "tcflush" );
     return -1;
   }
 
@@ -723,26 +576,17 @@ serial_flush( const serial_t * serial, uint8_t option ){
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 size_t 
 serial_available( const serial_t * serial ){
-  if( !serial ) {
-    errno = EINVAL;
-    fprintf(stderr, "ERROR: serial is 'NULL' at line %d in file %s\n", __LINE__, __FILE__);
+  if( !serial_valid( serial ) )
     return 0;
-  }
-
-  if( !serial_valid( serial ) ){
-    errno = EBADF;
-    fprintf(stderr, "ERROR: serial port ins't opened at line %d in file %s\n", __LINE__, __FILE__);
-    return 0;
-  }
   
   int32_t len;
   if( -1 == ioctl( serial->fd, FIONREAD, &len ) ) {
-    fprintf(stderr, "ERROR: ioctl(FIONREAD) the serial port failed: %s at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
+    error_print( "available ioctl" );
     return 0;
   }  
 
   if( 0 > len ){
-    fprintf(stderr, "ERROR: ioctl(FIONREAD) the serial port failed: %s at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
+    error_print( "available ioctl" );
     return 0;
   }
 
@@ -752,70 +596,37 @@ serial_available( const serial_t * serial ){
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 int8_t 
 serial_set_line_state( const serialLines_t line, uint8_t state, const serial_t * serial ){
-  if( !serial ) {
-    errno = EINVAL;
-    fprintf(stderr, "ERROR: serial is 'NULL' at line %d in file %s\n", __LINE__, __FILE__);
+  if( !serial_valid( serial ) )
+    return -1;
+
+  int status;
+  if( -1 == ioctl( serial->fd, TIOCMGET, &status ) ){
+    error_print( "serial_set_line_state ioctl" );
+    return -1;
+  }
+  
+  if( state ) 
+    status |= (int) line;
+  else 
+    status &= (int) ~line;
+
+  if( -1 == ioctl( serial->fd, TIOCMSET, &status ) ){
+    error_print( "serial_set_line_state ioctl" );
     return -1;
   }
 
-  if( !serial_valid( serial ) ){
-    errno = EBADF;
-    fprintf(stderr, "ERROR: serial port ins't opened at line %d in file %s\n", __LINE__, __FILE__);
-    return -1;
-  }
-
-  uint8_t currentState;
-  if( -1 == serial_get_line_state( line, &currentState, serial ) ){
-    fprintf(stderr, "ERROR: serial_get_line_state at line %d in file %s\n", __LINE__, __FILE__);
-    return -1;
-  }
-
-  if( currentState != state ){
-    int status;
-    if( -1 == ioctl( serial->fd, TIOCMGET, &status ) ){
-      fprintf(stderr, "ERROR: ioctl(TIOCMGET) the serial port failed: %s at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
-      return -1;
-    }
-    
-    if( state ) status |= (int) line;
-    else        status &= (int) ~line;
-
-    if( -1 == ioctl( serial->fd, TIOCMSET, &status ) ){
-      fprintf(stderr, "ERROR: ioctl(TIOCMSET) the serial port failed: %s at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
-      return -1;
-    }
-
-    if( -1 == serial_get_line_state( line, &currentState, serial ) ){
-      fprintf(stderr, "ERROR: serial_get_line_state at line %d in file %s\n", __LINE__, __FILE__);
-      return -1;
-    }
-
-    if( currentState != state ){
-      fprintf(stderr, "ERROR: serial_get_line_state at line %d in file %s\n", __LINE__, __FILE__);
-      return -1;
-    }
-  }
   return 0;
 }
 
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 int8_t 
 serial_get_line_state( const serialLines_t line, uint8_t *state , const serial_t * serial ){
-  if( !serial ) {
-    errno = EINVAL;
-    fprintf(stderr, "ERROR: serial is 'NULL' at line %d in file %s\n", __LINE__, __FILE__);
+  if( !serial_valid( serial ) )
     return -1;
-  }
-
-  if( !serial_valid( serial ) ){
-    errno = EBADF;
-    fprintf(stderr, "ERROR: serial port ins't opened at line %d in file %s\n", __LINE__, __FILE__);
-    return -1;
-  }
 
   int status;
   if( -1 == ioctl( serial->fd, TIOCMGET, &status ) ){
-    fprintf(stderr, "ERROR: ioctl(TIOCMGET) the serial port failed: %s at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
+    error_print( "serial_get_line_state ioctl" );
     return -1;
   }
   
@@ -826,23 +637,14 @@ serial_get_line_state( const serialLines_t line, uint8_t *state , const serial_t
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 char * 
 serial_print( uint8_t out, const serial_t * serial ){
-  if( !serial ){
-    errno = EINVAL;
-    fprintf(stderr, "ERROR: serial is 'NULL' at line %d in file %s\n", __LINE__, __FILE__);
+  if( !serial_valid( serial ) )
     return NULL;
-  }
-
-  if( !serial_valid( serial ) ){
-    errno = EBADF;
-    fprintf(stderr, "ERROR: serial port ins't opened at line %d in file %s\n", __LINE__, __FILE__);
-    return NULL;
-  }
   
   const size_t size = PATH_MAX + 1;
   char * output = (char *) malloc( size );
   if( !output ){
     errno = ENOMEM;
-    fprintf(stderr, "ERROR: malloc (%s) at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
+    error_print( "malloc" );
     return NULL;
   }
   
@@ -865,40 +667,30 @@ serial_print( uint8_t out, const serial_t * serial ){
   char * r = (char *) realloc( output, (size_t) len + 1 );
   if( !r ){
     free( output );
-    fprintf(stderr, "ERROR: realloc (%s) at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
+    error_print( "realloc" );
     return NULL;
   }
 
-  if( out ) printf( "%s\n", r );
+  if( out ) 
+    printf( "%s\n", r );
+
   return r;
 }
 
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 char * 
 serial_get_baudrate( baudRate_t * baudrate, const serial_t * serial ){
-  if( !serial ){
-    errno = EINVAL;
-    fprintf(stderr, "ERROR: config and/or serial are 'NULL' at line %d in file %s\n", __LINE__, __FILE__);
+  if( !serial_valid( serial ) )
     return NULL;
-  }
-
-  if( !serial_valid( serial ) ){
-    errno = EBADF;
-    fprintf(stderr, "ERROR: serial port ins't opened at line %d in file %s\n", __LINE__, __FILE__);
-    return NULL;
-  }
 
   struct termios tty;
-  int result = tcgetattr( serial->fd, &tty );
-  if( 0 != result ){
-    fprintf(stderr, "ERROR: tcgetatrr (%d)(%s) at line %d in file %s\n", result, strerror(errno), __LINE__, __FILE__);
+  if( !get_termios( serial->fd, &tty ) )
     return NULL;
-  }
   
   char * baudrate_string = ( char * ) malloc( BFS_GET );
   if( !baudrate_string ){
     errno = ENOMEM;
-    fprintf(stderr, "ERROR: malloc (%s) at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
+    error_print( "malloc" );
     return NULL;
   }
 
@@ -942,29 +734,17 @@ serial_get_baudrate( baudRate_t * baudrate, const serial_t * serial ){
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 char * 
 serial_get_parity( parity_t * parity, const serial_t * serial ){
-  if( !serial ){
-    errno = EINVAL;
-    fprintf(stderr, "ERROR: config and/or serial are 'NULL' at line %d in file %s\n", __LINE__, __FILE__);
+  if( !serial_valid( serial ) )
     return NULL;
-  }
-
-  if( !serial_valid( serial ) ){
-    errno = EBADF;
-    fprintf(stderr, "ERROR: serial port ins't opened at line %d in file %s\n", __LINE__, __FILE__);
-    return NULL;
-  }
 
   struct termios tty;
-  int result = tcgetattr( serial->fd, &tty );
-  if( 0 != result ){
-    fprintf(stderr, "ERROR: tcgetatrr (%d)(%s) at line %d in file %s\n", result, strerror(errno), __LINE__, __FILE__);
+  if( !get_termios( serial->fd, &tty ) )
     return NULL;
-  }
   
   char * parity_string = ( char * ) malloc( BFS_GET );
   if( !parity_string ){
     errno = ENOMEM;
-    fprintf(stderr, "ERROR: malloc (%s) at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
+    error_print( "malloc" );
     return NULL;
   }
 
@@ -990,29 +770,17 @@ serial_get_parity( parity_t * parity, const serial_t * serial ){
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 char * 
 serial_get_stopbits( stopBits_t * stopBits, const serial_t * serial ){
-  if( !serial ){
-    errno = EINVAL;
-    fprintf(stderr, "ERROR: config and/or serial are 'NULL' at line %d in file %s\n", __LINE__, __FILE__);
+  if( !serial_valid( serial ) )
     return NULL;
-  }
-
-  if( !serial_valid( serial ) ){
-    errno = EBADF;
-    fprintf(stderr, "ERROR: serial port ins't opened at line %d in file %s\n", __LINE__, __FILE__);
-    return NULL;
-  }
 
   struct termios tty;
-  int result = tcgetattr( serial->fd, &tty );
-  if( 0 != result ){
-    fprintf(stderr, "ERROR: tcgetatrr (%d)(%s) at line %d in file %s\n", result, strerror(errno), __LINE__, __FILE__);
+  if( !get_termios( serial->fd, &tty ) )
     return NULL;
-  }
   
   char * stopbits_string = ( char * ) malloc( BFS_GET );
   if( !stopbits_string ){
     errno = ENOMEM;
-    fprintf(stderr, "ERROR: malloc (%s) at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
+    error_print( "malloc" );
     return NULL;
   }
 
@@ -1032,24 +800,12 @@ serial_get_stopbits( stopBits_t * stopBits, const serial_t * serial ){
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 char * 
 serial_get_databits( dataBits_t * dataBits, const serial_t * serial ){
-  if( !serial ){
-    errno = EINVAL;
-    fprintf(stderr, "ERROR: config and/or serial are 'NULL' at line %d in file %s\n", __LINE__, __FILE__);
+  if( !serial_valid( serial ) )
     return NULL;
-  }
-
-  if( !serial_valid( serial ) ){
-    errno = EBADF;
-    fprintf(stderr, "ERROR: serial port ins't opened at line %d in file %s\n", __LINE__, __FILE__);
-    return NULL;
-  }
 
   struct termios tty;
-  int result = tcgetattr( serial->fd, &tty );
-  if( 0 != result ){
-    fprintf(stderr, "ERROR: tcgetatrr (%d)(%s) at line %d in file %s\n", result, strerror(errno), __LINE__, __FILE__);
+  if( !get_termios( serial->fd, &tty ) )
     return NULL;
-  }
   
   char * databits_string = ( char * ) malloc( BFS_GET );
   if( !databits_string ){
@@ -1074,29 +830,17 @@ serial_get_databits( dataBits_t * dataBits, const serial_t * serial ){
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 char * 
 serial_get_flowcontrol( flowControl_t * flowControl, const serial_t * serial ){
-  if( !serial ){
-    errno = EINVAL;
-    fprintf(stderr, "ERROR: config and/or serial are 'NULL' at line %d in file %s\n", __LINE__, __FILE__);
+  if( !serial_valid( serial ) )
     return NULL;
-  }
-
-  if( !serial_valid( serial ) ){
-    errno = EBADF;
-    fprintf(stderr, "ERROR: serial port ins't opened at line %d in file %s\n", __LINE__, __FILE__);
-    return NULL;
-  }
 
   struct termios tty;
-  int result = tcgetattr( serial->fd, &tty );
-  if( 0 != result ){
-    fprintf(stderr, "ERROR: tcgetatrr (%d)(%s) at line %d in file %s\n", result, strerror(errno), __LINE__, __FILE__);
+  if( !get_termios( serial->fd, &tty ) )
     return NULL;
-  }
   
   char * flowcontrol_string = ( char * ) malloc( BFS_GET );
   if( !flowcontrol_string ){
     errno = ENOMEM;
-    fprintf(stderr, "ERROR: malloc (%s) at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
+    error_print( "malloc" );
     return NULL;
   }
 
@@ -1124,29 +868,17 @@ serial_get_flowcontrol( flowControl_t * flowControl, const serial_t * serial ){
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 char * 
 serial_get_rule( uint8_t * timeout, uint8_t * min, const serial_t * serial ){
-  if( !serial ){
-    errno = EINVAL;
-    fprintf(stderr, "ERROR: config and/or serial are 'NULL' at line %d in file %s\n", __LINE__, __FILE__);
+  if( !serial_valid( serial ) )
     return NULL;
-  }
-
-  if( !serial_valid( serial ) ){
-    errno = EBADF;
-    fprintf(stderr, "ERROR: serial port ins't opened at line %d in file %s\n", __LINE__, __FILE__);
-    return NULL;
-  }
 
   struct termios tty;
-  int result = tcgetattr( serial->fd, &tty );
-  if( 0 != result ){
-    fprintf(stderr, "ERROR: tcgetatrr (%d)(%s) at line %d in file %s\n", result, strerror(errno), __LINE__, __FILE__);
+  if( !get_termios( serial->fd, &tty ) )
     return NULL;
-  }
   
   char * string = ( char * ) malloc( BFS_GET );
   if( !string ){
     errno = ENOMEM;
-    fprintf(stderr, "ERROR: malloc (%s) at line %d in file %s\n", strerror(errno), __LINE__, __FILE__);
+    error_print( "malloc" );
     return NULL;
   } 
   if( NULL != timeout )
@@ -1156,6 +888,56 @@ serial_get_rule( uint8_t * timeout, uint8_t * min, const serial_t * serial ){
 
   snprintf( string, BFS_GET, "%hhd,%hhd", tty.c_cc[VTIME], tty.c_cc[VMIN] );
   return string;
+}
+
+/**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
+int8_t 
+get_termios( int fd, struct termios * tty ){
+  if( !tty ){
+    errno = EINVAL;
+    error_print( "tty null" );
+    return 0;
+  }
+
+  int result = tcgetattr( fd, tty );
+  if( 0 != result ){
+    error_print( "tcgetattr" );
+    return 0;
+  }
+  return 1;
+}
+
+/**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
+int8_t 
+apply_termios( int fd, struct termios * tty ){
+  if( !tty ){
+    errno = EINVAL;
+    error_print( "tty null" );
+    return 0;
+  }
+
+  int result = tcsetattr( fd, TCSANOW, tty );
+  if( 0 != result ){
+    error_print( "tcsetattr" );
+    return 0;
+  }
+  return 1;
+}
+
+/**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
+int8_t
+fs_error( FILE * fp ){
+  if( feof( fp ) ){
+    clearerr( fp );
+    errno = ETIME;
+  }
+  else if( ferror( fp ) ) 
+    error_print( "ferror" );
+  else 
+    error_print( "else_ferror" );
+
+  clearerr( fp );
+  return 0;
 }
 
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************

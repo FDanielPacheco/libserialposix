@@ -17,6 +17,8 @@ main( void ){
   serial_set_line_state( SERIAL_DTR, 1, sr );
   usleep( 2e6 );
   
+  serial_print( 1, sr );
+
   serial_write( sr, "UTEST:WRITE_LF\n" );
   serial_drain( sr );
 
@@ -26,7 +28,10 @@ main( void ){
     if( serial_available( sr ) ){
       serial_readLine( buf, sizeof(buf), 0, sr );
       printf("%s", buf );
-    }
+      sleep( 1 );
+      serial_write( sr, "UTEST:WRITE_LF\n" );
+      serial_drain( sr );
+   }
 
     // Other process
   }
