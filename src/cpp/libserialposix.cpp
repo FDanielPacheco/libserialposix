@@ -107,9 +107,8 @@ libposix::SerialPort::connect( const std::string &_pathname, std::optional <Seri
   }
 
   this->pathname = _pathname;
-  this->config = __config;
 
-  if( StatusCode::Success != this->update( ) ){
+  if( StatusCode::Success != this->update( __config ) ){
     errorPrint( "update" );
     return StatusCode::Error;
   }
@@ -141,39 +140,41 @@ libposix::SerialPort::applyTermios( void ){
 
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 libposix::SerialPort::StatusCode
-libposix::SerialPort::update( void ){
+libposix::SerialPort::update( const Configuration &_config ){
   if( !this->isValid( ) )
     return StatusCode::Error;
 
-  if( StatusCode::Error == this->setBaudRate( this->config.baudrate ) ){
+  if( StatusCode::Error == this->setBaudRate( _config.baudrate ) ){
     errorPrint( "setBaudRate" );
     return StatusCode::Error;
   }
 
-  if( StatusCode::Error == this->setParity( this->config.parity ) ){
+  if( StatusCode::Error == this->setParity( _config.parity ) ){
     errorPrint( "setParity" );
     return StatusCode::Error;
   }
 
-  if( StatusCode::Error == this->setDataBits( this->config.bData ) ){
+  if( StatusCode::Error == this->setDataBits( _config.bData ) ){
     errorPrint( "setDataBits" );
     return StatusCode::Error;
   }
 
-  if( StatusCode::Error == this->setStopBits( this->config.bStop ) ){
+  if( StatusCode::Error == this->setStopBits( _config.bStop ) ){
     errorPrint( "setStopBits" );
     return StatusCode::Error;
   }
 
-  if( StatusCode::Error == this->setFlowControl( this->config.flow ) ){
+  if( StatusCode::Error == this->setFlowControl( _config.flow ) ){
     errorPrint( "setFlowControl" );
     return StatusCode::Error;
   }
 
-  if( StatusCode::Error == this->setRule( this->config.timeout, this->config.minBytes ) ){
+  if( StatusCode::Error == this->setRule( _config.timeout, _config.minBytes ) ){
     errorPrint( "setRule" );
     return StatusCode::Error;
   }
+
+  this->config = _config;
   return StatusCode::Success;
 }
 
