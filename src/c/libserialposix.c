@@ -163,7 +163,7 @@ serial_default_config( serial_config_t * config ){
   config->dataBits = DATA_BITS_8;
   config->flow     = FLOWCONTROL_NONE;
   config->minBytes = 0;
-  config->parity   = PARITY_NONE;
+  config->parity   = BPARITY_NONE;
   config->stopBits = STOP_BITS_1;
   config->timeout  = 100;
   config->readonly = 0;
@@ -214,18 +214,18 @@ serial_set_parity( const parity_t parity, const serial_t * serial ){
       errno = EINVAL;
       return -1;
       
-    case PARITY_NONE:
+    case BPARITY_NONE:
       tty.c_cflag &= (tcflag_t) ~(PARENB);                                    // Disable parity (Clear bit)
       tty.c_iflag &= (tcflag_t) ~(INPCK);                                     // Disable parity checking
       break;
     
-    case PARITY_ODD:
+    case BPARITY_ODD:
       tty.c_cflag |= (tcflag_t) (PARENB) | (PARODD);                          // Enable parity (Set bit) and Enable odd parity
       tty.c_iflag |= (tcflag_t) (INPCK);                                      // Enable parity checking
       break;
 
 
-    case PARITY_EVEN:
+    case BPARITY_EVEN:
       tty.c_cflag |= (tcflag_t) (PARENB);                                     // Enable parity (Set bit)
       tty.c_cflag &= (tcflag_t) ~(PARODD);                                    // Enable even parity
       tty.c_iflag |= (tcflag_t) (INPCK);                                      // Enable parity checking
@@ -750,17 +750,17 @@ serial_get_parity( parity_t * parity, const serial_t * serial ){
 
   if( !( tty.c_iflag & (tcflag_t) INPCK ) ){
     if( NULL != parity )
-      *parity = PARITY_NONE;
+      *parity = BPARITY_NONE;
     snprintf( parity_string, BFS_GET, "none" );
   } 
   else if( !( tty.c_cflag & (tcflag_t) PARODD ) ){
     if( NULL != parity )
-      *parity = PARITY_EVEN;
+      *parity = BPARITY_EVEN;
     snprintf( parity_string, BFS_GET, "even" );
   } 
   else{
     if( NULL != parity )
-      *parity = PARITY_ODD;    
+      *parity = BPARITY_ODD;    
     snprintf( parity_string, BFS_GET, "odd" );
   }  
 

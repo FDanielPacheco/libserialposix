@@ -68,9 +68,9 @@ typedef enum {
 
 //!< The options available for the parity mode on the serial communication.
 typedef enum {
-  PARITY_NONE,                                                                 //!< No parity bit is used.
-  PARITY_ODD,                                                                  //!< Parity bit used and it checks for odd.
-  PARITY_EVEN,                                                                 //!< Parity bit used and it checks for even.
+  BPARITY_NONE,                                                                 //!< No parity bit is used.
+  BPARITY_ODD,                                                                  //!< Parity bit used and it checks for odd.
+  BPARITY_EVEN,                                                                 //!< Parity bit used and it checks for even.
 } parity_t;
 
 //!< The options available for the number of data bits used on the serial communication.
