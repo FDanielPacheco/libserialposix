@@ -646,7 +646,24 @@ libposix::SerialPort::read( char * buf, const size_t size, const size_t offset, 
 
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 std::pair <size_t, libposix::SerialPort::StatusCode> 
-libposix::SerialPort::write( const char * format, ... ){
+libposix::SerialPort::write( const uint8_t * data, const size_t len ){
+  if( !this->isValid( ) )
+    return std::pair <size_t, libposix::SerialPort::StatusCode> (0, StatusCode::Error);
+
+  if( !data )
+    return std::pair <size_t, libposix::SerialPort::StatusCode> (0, StatusCode::InvalidParameter);
+
+  size_t size = fwrite( data, 1, len, this->fp.get( ) );
+
+  if( size <  len )
+    return std::pair <size_t, libposix::SerialPort::StatusCode> (0, this->fsError( ));
+
+  return std::pair <size_t, libposix::SerialPort::StatusCode> (size, StatusCode::Success);  
+}
+
+/***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
+std::pair <size_t, libposix::SerialPort::StatusCode> 
+libposix::SerialPort::writef( const char * format, ... ){
   if( !this->isValid( ) )
     return std::pair <size_t, libposix::SerialPort::StatusCode> (0, StatusCode::Error);
 

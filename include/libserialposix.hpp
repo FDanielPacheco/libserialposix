@@ -226,7 +226,8 @@ libposix{
 
       std::pair <size_t, StatusCode> readLine ( char * buf, const size_t size, const size_t offset );
       std::pair <size_t, StatusCode> read     ( char * buf, const size_t size, const size_t offset, const size_t length );
-      std::pair <size_t, StatusCode> write    ( const char * format, ... );      
+      std::pair <size_t, StatusCode> write    ( const uint8_t * data, const size_t len );      
+      std::pair <size_t, StatusCode> writef   ( const char * format, ... );      
 
       std::pair <size_t, StatusCode> available( void );
 

@@ -265,7 +265,7 @@ int8_t serial_default_config( serial_config_t * config );
 /**********************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************//**
  * @brief Updates the serial port configuration based on the configuration structure passed as argument.
  *  
- * @param[in]  config The serial port configuration data structure (`serial_config_t`), this configuration must have been updated with the user's desired information. 
+ * @param[in] config The serial port configuration data structure (`serial_config_t`), this configuration must have been updated with the user's desired information. 
  * @param[in] serial The serial port structure (`serial_t`) associated with the serial port itself.
  * 
  * @return Upon success, the serial port current configuration is updated, and it returns 0. \n 
@@ -600,7 +600,23 @@ size_t serial_read( char * buf, const size_t size, const size_t offset, const si
  *       If the formatted string is too long for the buffer, the function will return 0.
  * 
  **************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
-size_t serial_write( const serial_t * serial, const char * format, ... );
+size_t serial_writef( const serial_t * serial, const char * format, ... );
+
+/**********************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************//**
+ * @brief Sends a sequence of bytes to the serial port output buffer (file stream).
+ *
+ * @param[in] serial The serial port structure (`serial_t`) associated with the serial port itself.
+ * @param[in] data The sequence of bytes to send via the serial port.
+ * @param[in] len The number of bytes on data.
+ * 
+ * @return Upon success, the function returns the number of bytes wrote to the input buffer. \n
+ *         On error, the function returns 0 and sets `errno` to indicate the error.
+ *
+ *  - `EINVAL`: Invalid argument \n
+ *  - `EBADF`: Bad file descriptor
+ *
+ **************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
+size_t serial_write( const serial_t * serial, const uint8_t * data, const size_t len );
 
 /**********************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************//**
  * @brief Returns the number of bytes available in the serial port input buffer (file stream).

@@ -465,10 +465,16 @@ serial_read( char * buf, const size_t size, const size_t offset, const size_t le
     return 0;
   }
 
+  if( !length ){
+    errno = EINVAL;
+    error_print( "length is 0" );
+    return 0;
+  }
+
   if( !serial_valid( serial ) )
     return 0;
-
-  if( size <= (offset + length) ){
+  
+  if( size < (offset + length) ){
     errno = ENOMEM;
     error_print( "serial_read overflow" );
     return 0;
@@ -486,7 +492,7 @@ serial_read( char * buf, const size_t size, const size_t offset, const size_t le
 
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 size_t 
-serial_write( const serial_t * serial, const char * format, ... ){
+serial_writef( const serial_t * serial, const char * format, ... ){
   if( !format ) {
     errno = EINVAL;
     error_print( "format null" );
@@ -522,6 +528,27 @@ serial_write( const serial_t * serial, const char * format, ... ){
 
   return size;
 }
+
+/**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
+size_t 
+serial_write( const serial_t * serial, const uint8_t * data, const size_t len ){
+  if( !data ) {
+    errno = EINVAL;
+    error_print( "data null" );
+    return 0;
+  }
+
+  if( !serial_valid( serial ) )
+    return 0;
+
+  size_t size = fwrite( data, 1, len, serial->fp );
+
+  if( size < len )
+    return (size_t) fs_error( serial->fp );
+
+  return size;
+}
+
 
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 uint8_t 
@@ -567,6 +594,11 @@ serial_flush( const serial_t * serial, uint8_t option ){
   
   if( -1 == tcflush( serial->fd, option ) ){
     error_print( "tcflush" );
+    return -1;
+  }
+
+  if( 0 != fflush( serial->fp ) ){
+    error_print( "fflush" );
     return -1;
   }
 
